@@ -4,7 +4,6 @@ dist/
 __pycache__/
 *.py[cod]
 .model-cache/
-public/models/*.tflite
 public/wasm/
 *.log
 .DS_Store

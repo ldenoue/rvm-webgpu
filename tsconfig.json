@@ -9,7 +9,7 @@
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "moduleDetection": "force",
-    "types": ["@webgpu/types"],
+    "types": ["@webgpu/types", "vite/client"],
     "noEmit": true,
     "strict": true
   },

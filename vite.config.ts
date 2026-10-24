@@ -7,6 +7,7 @@ const isolationHeaders = {
 };
 
 export default defineConfig({
+  base: '/rvm-webgpu/',
   plugins: [typegpu()],
   server: { headers: isolationHeaders },
   preview: { headers: isolationHeaders },

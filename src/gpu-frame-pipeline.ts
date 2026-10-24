@@ -7,6 +7,7 @@ type GpuFramePipelineOptions = {
   sourceHeight: number;
   width: number;
   height: number;
+  mirror: boolean;
 };
 
 /**
@@ -25,7 +26,7 @@ export class GpuFramePipeline {
   readonly #height: number;
 
   private constructor(options: GpuFramePipelineOptions, device: GPUDevice) {
-    const { canvas, sourceWidth, sourceHeight, width, height } = options;
+    const { canvas, sourceWidth, sourceHeight, width, height, mirror } = options;
     this.#width = width;
     this.#height = height;
     this.#root = tgpu.initFromDevice({ device });
@@ -58,11 +59,13 @@ export class GpuFramePipeline {
     const cropScaleY = videoAspect > targetAspect ? 1 : videoAspect / targetAspect;
     const cropOffsetX = (1 - cropScaleX) / 2;
     const cropOffsetY = (1 - cropScaleY) / 2;
+    const sourceXOrigin = mirror ? 1 : 0;
+    const sourceXDirection = mirror ? -1 : 1;
 
     const sampleVideo = tgpu.fn([d.vec2f], d.vec4f)((uv) => {
       'use gpu';
       const sourceUv = d.vec2f(
-        cropOffsetX + (1 - uv.x) * cropScaleX,
+        cropOffsetX + (sourceXOrigin + uv.x * sourceXDirection) * cropScaleX,
         cropOffsetY + uv.y * cropScaleY,
       );
       return std.textureSampleLevel(sourceView.$, sampler.$, sourceUv, 0);

@@ -4,12 +4,19 @@ An experimental browser port of [Robust Video Matting](https://github.com/PeterL
 
 Everything runs locally in the browser: camera frames and mattes are not uploaded to a server.
 
+## Live demo
+
+**[Try RVM WebGPU in your browser →](https://ldenoue.github.io/rvm-webgpu/)**
+
+Load either model, then choose **Try sample video** for an immediate demo or **Start camera** to use your webcam. A current Chromium browser with WebGPU enabled is recommended.
+
 ## Highlights
 
 - Fully accelerated LiteRT.js WebGPU inference with a WASM/XNNPack fallback.
 - TypeGPU preprocessing and compositing keep the WebGPU camera path on the GPU.
 - Recurrent RVM state is preserved between video frames.
 - Fixed 512 × 288 and 256 × 256 model profiles.
+- Bundled sample video for trying matting without camera permission.
 - Built-in, permission-free 30-run benchmark.
 
 The UI can switch between fixed **512 × 288** and **256 × 256** profiles. Camera frames are center-cropped to the selected aspect ratio, and both models run the MobileNetV3 RVM graph at `downsample_ratio=1`. RVM's four recurrent states remain on the selected accelerator between frames. The UI reports `CompiledModel.isFullyAccelerated`, so a mixed WebGPU/WASM graph is visible instead of being mistaken for full GPU execution.
@@ -20,14 +27,14 @@ On WebGPU, a TypeGPU pipeline mirrors, crops, resizes, and converts each camera 
 
 Requirements: Node.js 20 or newer, a current Chromium browser, and Python 3.11 only if you need to build the models.
 
-The model binaries are intentionally excluded from Git. Rebuild them first (see below), then:
+The repository includes the converted demo models. Install and run it with:
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open the local URL in a current Chromium browser. Camera access works on `localhost`. Choose WebGPU or WASM before loading the model.
+Open the local URL in a current Chromium browser. Camera access works on `localhost`. Choose WebGPU or WASM before loading the model. The sample video does not require camera permission.
 
 Use **Benchmark 30×** for a permission-free synthetic test: it discards five warm-up runs, synchronizes each run, then reports median latency, p95 latency in the runtime log, and derived FPS. The WebGPU benchmark includes TypeGPU preprocessing and GPU compositing; the WASM benchmark includes CPU preprocessing and alpha readback. The development and preview servers send cross-origin isolation headers so LiteRT's threaded WASM build can be measured fairly.
 
@@ -74,4 +81,4 @@ npm run preview
 
 ## Licensing
 
-This project does not redistribute model weights in Git. The upstream RVM source and weights are licensed under GPL-3.0; review that license before distributing a converted model or derivative application. LiteRT.js is Apache-2.0.
+The converted demo models are derived from the upstream RVM weights, which are licensed under GPL-3.0. Review the [RVM license](https://github.com/PeterL1n/RobustVideoMatting/blob/master/LICENSE) before redistributing the models or a derivative application. LiteRT.js is Apache-2.0. The bundled sample video was supplied by the repository owner.

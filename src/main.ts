@@ -15,16 +15,23 @@ type Profile = {
   modelUrl: string;
 };
 
+type SourceMode = 'camera' | 'sample';
+
+const assetUrl = (path: string) =>
+  `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`;
+
+const SAMPLE_VIDEO_URL = assetUrl('samples/glasses.mp4');
+
 const PROFILES: Record<'wide' | 'square', Profile> = {
   wide: {
     width: 512,
     height: 288,
-    modelUrl: '/models/rvm_mobilenetv3_512x288_fp16.tflite',
+    modelUrl: assetUrl('models/rvm_mobilenetv3_512x288_fp16.tflite'),
   },
   square: {
     width: 256,
     height: 256,
-    modelUrl: '/models/rvm_mobilenetv3_256x256_fp16.tflite',
+    modelUrl: assetUrl('models/rvm_mobilenetv3_256x256_fp16.tflite'),
   },
 };
 
@@ -41,6 +48,7 @@ const outputContext = outputCanvas.getContext('2d')!;
 const loadButton = element<HTMLButtonElement>('load');
 const benchmarkButton = element<HTMLButtonElement>('benchmark');
 const cameraButton = element<HTMLButtonElement>('camera');
+const sampleButton = element<HTMLButtonElement>('sample');
 const resetButton = element<HTMLButtonElement>('reset');
 const acceleratorSelect = element<HTMLSelectElement>('accelerator');
 const profileSelect = element<HTMLSelectElement>('profile');
@@ -55,10 +63,12 @@ const resolutionElement = element<HTMLElement>('resolution');
 let model: CompiledModel | undefined;
 let stream: MediaStream | undefined;
 let running = false;
+let sourceMode: SourceMode | undefined;
 let resetRequested = false;
 let recurrent: Record<string, Tensor> = {};
 let smoothedLatency = 0;
 let lastFrameFinished = 0;
+let sourceGeneration = 0;
 let runtimeLoaded = false;
 let gpuFramePipeline: GpuFramePipeline | undefined;
 
@@ -126,12 +136,13 @@ function createZeroState() {
 }
 
 async function loadModel() {
-  if (running) stopCamera();
+  if (running) stopSource();
   loadButton.disabled = true;
   acceleratorSelect.disabled = true;
   profileSelect.disabled = true;
   benchmarkButton.disabled = true;
   cameraButton.disabled = true;
+  sampleButton.disabled = true;
   setStatus('Initializing LiteRT…', 'busy');
   try {
     const accelerator = acceleratorSelect.value as 'webgpu' | 'wasm';
@@ -144,10 +155,13 @@ async function loadModel() {
     if (!runtimeLoaded) {
       const jspi = await supportsFeature('jspi');
       log(`WebGPU available: ${isWebGPUSupported()}; JSPI available: ${jspi}`);
-      await loadLiteRt('/wasm/', {
+      await loadLiteRt(assetUrl('wasm/'), {
         jspi: accelerator === 'webgpu',
-        threads: accelerator === 'wasm',
+        threads: accelerator === 'wasm' && crossOriginIsolated,
       });
+      if (accelerator === 'wasm' && !crossOriginIsolated) {
+        log('Cross-origin isolation is unavailable; using single-threaded WASM.');
+      }
       runtimeLoaded = true;
     }
     deleteTensors(recurrent);
@@ -170,6 +184,7 @@ async function loadModel() {
     log(`Fully accelerated: ${model.isFullyAccelerated}`);
     showReadyStatus(accelerator);
     cameraButton.disabled = false;
+    sampleButton.disabled = false;
     benchmarkButton.disabled = false;
     resetButton.disabled = false;
     profileSelect.disabled = false;
@@ -189,6 +204,7 @@ async function runBenchmark() {
   if (!model || running) return;
   benchmarkButton.disabled = true;
   cameraButton.disabled = true;
+  sampleButton.disabled = true;
   profileSelect.disabled = true;
   loadButton.disabled = true;
   createZeroState();
@@ -211,6 +227,7 @@ async function runBenchmark() {
         sourceHeight: height,
         width,
         height,
+        mirror: false,
       });
     }
     for (let iteration = 0; iteration < 35; iteration++) {
@@ -263,6 +280,7 @@ async function runBenchmark() {
     benchmarkGpuPipeline?.destroy();
     benchmarkButton.disabled = false;
     cameraButton.disabled = false;
+    sampleButton.disabled = false;
     profileSelect.disabled = false;
     loadButton.disabled = false;
   }
@@ -284,8 +302,10 @@ function frameToTensor(): { tensor: Tensor; rgba: Uint8ClampedArray } {
     sourceY = (video.videoHeight - sourceHeight) / 2;
   }
   inputContext.save();
-  inputContext.translate(width, 0);
-  inputContext.scale(-1, 1);
+  if (sourceMode === 'camera') {
+    inputContext.translate(width, 0);
+    inputContext.scale(-1, 1);
+  }
   inputContext.drawImage(
     video,
     sourceX,
@@ -327,8 +347,8 @@ function destroyGpuFramePipeline() {
   outputCanvas.hidden = false;
 }
 
-async function renderFrame() {
-  if (!running || !model) return;
+async function renderFrame(generation: number) {
+  if (!running || generation !== sourceGeneration || !model) return;
   if (resetRequested) createZeroState();
 
   const gpuPath = gpuFramePipeline;
@@ -364,23 +384,29 @@ async function renderFrame() {
     lastFrameFinished = now;
     latencyElement.textContent = smoothedLatency.toFixed(1);
     fpsElement.textContent = frameRate ? frameRate.toFixed(1) : '—';
-    requestAnimationFrame(() => void renderFrame());
+    scheduleNextFrame(generation);
   } catch (error) {
     source.delete();
     const message = error instanceof Error ? error.message : String(error);
     log(`Inference error: ${message}`);
     setStatus('Inference failed', 'error');
-    stopCamera();
+    stopSource();
   }
 }
 
-async function startCamera() {
-  stream = await navigator.mediaDevices.getUserMedia({
-    video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-    audio: false,
-  });
-  video.srcObject = stream;
-  await video.play();
+function scheduleNextFrame(generation: number) {
+  if (!running || generation !== sourceGeneration) return;
+  const next = () => {
+    if (running && generation === sourceGeneration) void renderFrame(generation);
+  };
+  if (sourceMode === 'sample' && 'requestVideoFrameCallback' in video) {
+    video.requestVideoFrameCallback(next);
+  } else {
+    requestAnimationFrame(next);
+  }
+}
+
+function startVideoSource(mode: SourceMode) {
   destroyGpuFramePipeline();
   if (model?.options.accelerator === 'webgpu') {
     try {
@@ -391,29 +417,68 @@ async function startCamera() {
         sourceHeight: video.videoHeight,
         width,
         height,
+        mirror: mode === 'camera',
       });
       outputCanvas.hidden = true;
       gpuOutputCanvas.hidden = false;
-      log('TypeGPU GPU-only camera preprocessing and compositing enabled.');
+      log(`TypeGPU GPU-only ${mode} preprocessing and compositing enabled.`);
     } catch (error) {
       log(`TypeGPU pipeline unavailable; using CPU pixels: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
+  sourceMode = mode;
   running = true;
   emptyElement.hidden = true;
-  cameraButton.textContent = 'Stop camera';
+  cameraButton.textContent = mode === 'camera' ? 'Stop camera' : 'Start camera';
+  sampleButton.textContent = mode === 'sample' ? 'Stop sample video' : 'Try sample video';
+  cameraButton.disabled = mode === 'sample';
+  sampleButton.disabled = mode === 'camera';
   createZeroState();
+  smoothedLatency = 0;
   lastFrameFinished = 0;
-  void renderFrame();
+  const generation = ++sourceGeneration;
+  void renderFrame(generation);
 }
 
-function stopCamera() {
+async function startCamera() {
+  video.loop = false;
+  video.removeAttribute('src');
+  video.load();
+  stream = await navigator.mediaDevices.getUserMedia({
+    video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+    audio: false,
+  });
+  video.srcObject = stream;
+  await video.play();
+  startVideoSource('camera');
+}
+
+async function startSampleVideo() {
+  video.srcObject = null;
+  video.loop = true;
+  video.src = SAMPLE_VIDEO_URL;
+  video.load();
+  await video.play();
+  startVideoSource('sample');
+}
+
+function stopSource() {
   running = false;
+  sourceGeneration++;
   destroyGpuFramePipeline();
   stream?.getTracks().forEach((track) => track.stop());
   stream = undefined;
   video.srcObject = null;
+  video.pause();
+  if (sourceMode === 'sample') {
+    video.removeAttribute('src');
+    video.load();
+  }
+  sourceMode = undefined;
   cameraButton.textContent = 'Start camera';
+  sampleButton.textContent = 'Try sample video';
+  cameraButton.disabled = !model;
+  sampleButton.disabled = !model;
 }
 
 loadButton.addEventListener('click', () => void loadModel());
@@ -425,11 +490,21 @@ profileSelect.addEventListener('change', () => {
   if (model) void loadModel();
 });
 cameraButton.addEventListener('click', () => {
-  if (running) stopCamera();
+  if (sourceMode === 'camera') stopSource();
   else void startCamera().catch((error) => {
     log(`Camera error: ${error instanceof Error ? error.message : String(error)}`);
     setStatus('Camera unavailable', 'error');
   });
+});
+sampleButton.addEventListener('click', () => {
+  if (sourceMode === 'sample') stopSource();
+  else void startSampleVideo().catch((error) => {
+    log(`Sample video error: ${error instanceof Error ? error.message : String(error)}`);
+    setStatus('Sample video unavailable', 'error');
+  });
+});
+video.addEventListener('seeked', () => {
+  if (sourceMode === 'sample') resetRequested = true;
 });
 resetButton.addEventListener('click', () => { resetRequested = true; });
 
