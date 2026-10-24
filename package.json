@@ -1,0 +1,27 @@
+{
+  "name": "rvm-litert-webgpu",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "postinstall": "node scripts/copy-wasm.mjs",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "model:download": "bash scripts/download_saved_model.sh",
+    "model:convert": "npm run model:convert:wide && npm run model:convert:square",
+    "model:convert:wide": ".venv/bin/python scripts/convert_model.py --saved-model .model-cache/rvm_mobilenetv3_tf --output public/models/rvm_mobilenetv3_512x288_fp16.tflite --width 512 --height 288 --float16",
+    "model:convert:square": ".venv/bin/python scripts/convert_model.py --saved-model .model-cache/rvm_mobilenetv3_tf --output public/models/rvm_mobilenetv3_256x256_fp16.tflite --width 256 --height 256 --float16"
+  },
+  "dependencies": {
+    "@litertjs/core": "2.6.0",
+    "typegpu": "^0.12.9"
+  },
+  "devDependencies": {
+    "@types/dom-webcodecs": "^0.1.17",
+    "@webgpu/types": "^0.1.74",
+    "typescript": "^5.9.3",
+    "unplugin-typegpu": "^0.12.7",
+    "vite": "^7.1.12"
+  }
+}

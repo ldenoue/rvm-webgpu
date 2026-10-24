@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#101310" />
+    <title>RVM · LiteRT WebGPU</title>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <p class="eyebrow">RVM × LiteRT.js</p>
+          <h1>Browser matting,<br />on the GPU.</h1>
+        </div>
+        <div class="status" id="status" data-kind="idle">Model not loaded</div>
+      </header>
+
+      <section class="controls" aria-label="Controls">
+        <label>
+          Accelerator
+          <select id="accelerator">
+            <option value="webgpu">WebGPU</option>
+            <option value="wasm">WASM / XNNPack</option>
+          </select>
+        </label>
+        <label>
+          Input size
+          <select id="profile">
+            <option value="wide">512 × 288</option>
+            <option value="square">256 × 256</option>
+          </select>
+        </label>
+        <button id="load">Load model</button>
+        <button id="benchmark" disabled>Benchmark 30×</button>
+        <button id="camera" disabled>Start camera</button>
+        <button id="reset" disabled>Reset memory</button>
+      </section>
+
+      <section class="stage" id="stage">
+        <video id="video" playsinline muted></video>
+        <canvas id="output" width="512" height="288"></canvas>
+        <canvas id="gpu-output" width="512" height="288" hidden></canvas>
+        <canvas id="input" width="512" height="288" hidden></canvas>
+        <div class="empty" id="empty">Load the model, then start your camera.</div>
+      </section>
+
+      <section class="metrics" aria-label="Performance">
+        <div><strong id="fps">—</strong><span>FPS</span></div>
+        <div><strong id="latency">—</strong><span>inference ms</span></div>
+        <div><strong id="backend">—</strong><span>requested backend</span></div>
+        <div><strong id="resolution">512 × 288</strong><span>model input</span></div>
+      </section>
+
+      <details>
+        <summary>Runtime log</summary>
+        <pre id="log"></pre>
+      </details>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
